@@ -1,6 +1,7 @@
 import { Head } from "nextra/components";
 import "nextra-theme-blog/style.css";
 import "@/styles/globals.css";
+import { CookieBanner } from "@/components/cookie-banner";
 import CustomFooter from "@/components/custom-footer";
 import CustomHeader from "@/components/custom-header";
 import type { Metadata } from "next";
@@ -33,7 +34,7 @@ export default async function RootLayout({ children }) {
 		>
 			<Head backgroundColor={{ dark: "#15120d", light: "#faf5e9" }} />
 			<body className="min-h-screen">
-				<Layout>
+				<Layout banner={<CookieBanner />}>
 					<CustomHeader />
 
 					{children}

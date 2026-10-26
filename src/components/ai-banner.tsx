@@ -18,7 +18,7 @@ export function AiBanner() {
 	if (!visible) return null;
 
 	return (
-		<div className="fixed bottom-0 inset-x-0 z-50 flex items-center justify-center gap-2 border-t border-neutral-200 bg-neutral-50 px-4 py-2.5 text-xs text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-400">
+		<div className="ai-banner fixed bottom-0 inset-x-0 z-50 flex items-center justify-center gap-2 border-t border-neutral-200 bg-neutral-50 px-4 py-2.5 text-xs text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-400">
 			<IconRobot className="w-3.5 h-3.5 shrink-0" />
 			<span>
 				Written with AI assistance. A human guided the structure, reviewed the

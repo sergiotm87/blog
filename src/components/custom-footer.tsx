@@ -1,5 +1,7 @@
+import { CookieSettingsButton } from "@/components/cookie-settings-button";
 import { DraftSwitch } from "@/components/draft-switch";
 import { Navbar } from "@/components/navbar";
+import { Link } from "next-view-transitions";
 import { Footer, ThemeSwitch } from "nextra-theme-blog";
 import { Search } from "nextra/components";
 import { getPageMap } from "nextra/page-map";
@@ -18,6 +20,37 @@ const CustomFooter = async () => {
 						{process.env.NODE_ENV === "development" && <DraftSwitch />}
 					</div>
 					<Search placeholder="Search posts..." />
+				</div>
+
+				<div
+					className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"
+					data-pagefind-ignore="all"
+				>
+					<CookieSettingsButton />
+					<Link href="/privacy/" className="no-underline hover:underline">
+						Privacy &amp; cookies
+					</Link>
+					<span>
+						Gopher by{" "}
+						<a
+							href="https://go.dev/blog/gopher"
+							target="_blank"
+							rel="noopener noreferrer"
+							className="hover:underline"
+						>
+							Renée French
+						</a>{" "}
+						(
+						<a
+							href="https://creativecommons.org/licenses/by/4.0/"
+							target="_blank"
+							rel="noopener noreferrer"
+							className="hover:underline"
+						>
+							CC BY 4.0
+						</a>
+						), modified
+					</span>
 				</div>
 			</div>
 		</div>
