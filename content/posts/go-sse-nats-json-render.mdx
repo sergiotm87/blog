@@ -1,0 +1,215 @@
+---
+title: "Building an SSE Event Stream in Go with NATS JetStream and json-render"
+date: 2026-03-10
+description: Deep dive into the Go core implementation — NATS per-user streams, EventBridgeHandler, spec mapper, SSE handler with Echo, and decision points.
+author: Sergio Teran
+tags:
+  [
+    Kajuna,
+    Go,
+    SSE,
+    NATS,
+    JetStream,
+    Echo
+  ]
+display: hidden
+---
+
+import { Callout } from 'nextra/components'
+
+This is the backend implementation companion to [Real-Time Event Streaming: From Fragmented Dashboards to Live Context](/posts/sse-event-stream-architecture). This post covers the Go core side: NATS infrastructure, event transformation, SSE delivery, and decision points.
+
+## NATS JetStream Per-User Streams
+
+The foundation is a dedicated JetStream stream for per-user events:
+
+```go
+streamConfig := &nats.StreamConfig{
+    Name:     "USER_EVENTS",
+    Subjects: []string{"kajuna.user.>"},
+    MaxAge:   1 * time.Hour,
+    Storage:  nats.MemoryStorage,
+}
+```
+
+Memory storage is intentional — these events are ephemeral UI updates, not durable business data. The 1-hour max age bounds memory usage while providing enough buffer for reconnecting clients.
+
+### NATS KV for Decision Points
+
+A single KV bucket handles interactive decision state:
+
+```go
+// Decision point state
+js.CreateKeyValue(&nats.KeyValueConfig{
+    Bucket:  "kajuna_decisions",
+    TTL:     1 * time.Hour,
+    Storage: nats.MemoryStorage,
+})
+```
+
+No server-side spec accumulation is needed — the SSE handler sends an empty feed spec on connect, and the client accumulates patches incrementally.
+
+## EventBridgeHandler: Global to Per-User Fan-Out
+
+The bridge handler subscribes to all domain topics via Watermill, with dedicated named subscribers for restart survival:
+
+```go
+wmRouter.AddConsumerHandler(
+    "event_bridge_pattern_created",     // unique handler ID
+    pattern.TopicPatternCreated,         // "kajuna.pattern.created.v1"
+    wmSubscriber,
+    eventBridgeHandler.HandlePatternCreated,
+)
+```
+
+Each handler follows the same pattern:
+
+1. Unmarshal the domain event
+2. Transform to json-render patches via spec mapper
+3. Fan out to the owning user's subject
+
+```go
+func (h *EventBridgeHandler) fanOut(patternID string, patches []JsonPatch) error {
+    userID, err := h.ownerResolver.ResolveOwner(patternID)
+    if err != nil || userID == "" {
+        userID = "_broadcast" // Broadcast mode (no user_id column yet)
+    }
+
+    // Publish patches to per-user NATS subject
+    patchData, _ := json.Marshal(patches)
+    h.publisher.Publish(fmt.Sprintf("kajuna.user.%s.events", userID), patchData)
+    return nil
+}
+```
+
+<Callout type="warning">
+The `_broadcast` subject is temporary. Once the `pattern` table has a `user_id` column, the `BroadcastOwnerResolver` will be replaced with `PatternRepoOwnerResolver` for true per-user isolation.
+</Callout>
+
+## Spec Mapper: Events to JSON Patches
+
+Each domain event type has a dedicated mapper function. The convention is consistent: create a Card element with contextual props, add a timestamp sub-element, and prepend to the feed:
+
+```go
+func MapPatternCreated(event PatternCreatedEvent) []JsonPatch {
+    elemKey := fmt.Sprintf("evt-pattern-created-%s-%d",
+        event.PatternID, event.CreatedAt.Unix())
+
+    return []JsonPatch{
+        {Op: "add", Path: "/elements/" + elemKey, Value: SpecElement{
+            Type: "Card",
+            Props: map[string]any{
+                "title":       fmt.Sprintf("Pattern Created: %s", event.Symbol),
+                "description": fmt.Sprintf("%s on %s", event.Type, event.Interval),
+            },
+            Children: []string{elemKey + "-time"},
+        }},
+        {Op: "add", Path: "/elements/" + elemKey + "-time", Value: SpecElement{
+            Type:  "Text",
+            Props: map[string]any{"text": event.CreatedAt.Format(time.RFC3339)},
+        }},
+        {Op: "add", Path: "/elements/event-feed/children/0", Value: elemKey},
+    }
+}
+```
+
+Element keys include the entity ID and timestamp to ensure uniqueness across events. The `children/0` path prepends (newest first).
+
+### Workflow Progress
+
+Workflow progress is special: instead of creating new cards, it updates an existing card with a Progress bar. The element key uses the workflow name (not timestamp), so subsequent steps replace the previous progress state:
+
+```go
+func MapWorkflowStep(event WorkflowStepEvent) []JsonPatch {
+    elemKey := fmt.Sprintf("evt-workflow-%s-%s",
+        event.PatternID, event.WorkflowName)
+    fraction := float64(event.StepNumber) / float64(event.TotalSteps)
+    // ... Card with Progress child at fraction * 100
+}
+```
+
+## SSE Handler: Echo Streaming
+
+The SSE handler is a single long-lived Echo handler:
+
+```go
+func (h *StreamHandler) HandleStream(c echo.Context) error {
+    userID, _ := c.Get("user_id").(string)
+
+    // SSE headers
+    w := c.Response()
+    w.Header().Set("Content-Type", "text/event-stream")
+    w.Header().Set("Cache-Control", "no-cache")
+    w.Header().Set("X-Accel-Buffering", "no") // Disable nginx buffering
+
+    flusher := w.Writer.(http.Flusher)
+
+    // 1. Send empty feed spec (client accumulates patches from here)
+    spec := EmptyFeedSpec()
+    writeSSEEvent(w, flusher, "spec-init", 1, spec)
+
+    // 2. Subscribe to per-user + broadcast subjects
+    msgCh := make(chan *nats.Msg, 64)
+    userSub, _ := h.natsConn.ChanSubscribe(
+        fmt.Sprintf("kajuna.user.%s.events", userID), msgCh)
+    broadcastSub, _ := h.natsConn.ChanSubscribe(
+        "kajuna.user._broadcast.events", msgCh)
+    defer userSub.Unsubscribe()
+    defer broadcastSub.Unsubscribe()
+
+    // 3. Event loop
+    heartbeat := time.NewTicker(15 * time.Second)
+    for {
+        select {
+        case <-c.Request().Context().Done():
+            return nil
+        case msg := <-msgCh:
+            writeSSEEvent(w, flusher, "spec-patch", id, msg.Data)
+        case <-heartbeat.C:
+            writeSSEEvent(w, flusher, "heartbeat", id, struct{}{})
+        }
+    }
+}
+```
+
+Key details:
+- `X-Accel-Buffering: no` is essential for nginx reverse proxies
+- `http.Flusher` ensures each event is sent immediately, not buffered
+- The channel buffer (64) absorbs burst events while the handler writes
+- `Context().Done()` detects client disconnection
+
+## Decision Points
+
+Decision points are stored in `kajuna_decisions` KV with CAS semantics:
+
+```go
+func (h *DecisionHandler) HandleRespondToDecision(c echo.Context) error {
+    entry, _ := h.decisionsKV.Get(decisionID)
+    var decision Decision
+    json.Unmarshal(entry.Value(), &decision)
+
+    // Validate ownership, expiration, idempotency
+    if decision.UserID != userID { return Forbidden }
+    if time.Now().After(decision.ExpiresAt) { return Gone }
+    if decision.Resolved { return Conflict }
+
+    decision.Resolved = true
+    decision.Resolution = req.Action
+    h.decisionsKV.Update(decisionID, data, entry.Revision()) // CAS
+}
+```
+
+Future enhancement: timeout goroutines that auto-resolve decisions with the default action when the deadline passes.
+
+## DBOS Workflow Instrumentation
+
+Each saga step in `CreatePatternWorkflow` emits a `WorkflowStepEvent`:
+
+```go
+emitProgress(ctx, deps, patternID, "CreatePattern", "WritePattern", 1, 4, "running")
+patternID, err := dbos.RunAsStep(ctx, func(stepCtx context.Context) (string, error) {
+    // ... step logic
+}, dbos.WithStepName("WritePattern"))
+```
+
+The `emitProgress` helper is fire-and-forget — failures are logged but never interrupt the saga.

@@ -1,0 +1,216 @@
+---
+title: Advanced SOPS Access Control with Multiple Credentials
+date: 2025-07-19
+description: Fine-grained secrets management for teams and monorepos
+author: Sergio Teran
+tags:
+  [
+    Git,
+    DevEx,
+    Security
+  ]
+display: hidden
+---
+
+import { Image } from 'nextra/components'
+import { Steps } from 'nextra/components'
+import { Callout } from 'nextra/components'
+
+#### Advanced: Access control and multiple credentials
+
+Now there is a more realistic example if you want to dig deeper.
+
+`Age` encryption is built around recipients. When a file is encrypted, it's encrypted for one or more recipients, and any of them can decrypt it. SOPS leverages this to provide fine-grained access control to your secrets.
+
+You can define different encryption keys for different paths in your repository. This is useful in a monorepo where different teams or services have their own secrets.
+
+Let's consider a scenario with two services, `service-a` and `service-b`, and a shared key for CI/CD environments.
+
+##### 1. Generate a shared `age` key
+
+First, let's create a dedicated `age` keypair that will be used for shared access, for example, in a CI/CD environment.
+
+```bash
+age-keygen -o age.key
+```
+
+This will create a file `age.key` with the private key and print the public key to standard output.
+
+```
+Public key: age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+The public key is what you'll use in `.sops.yaml`. The private key in `age.key` needs to be stored securely, for example as a secret in your CI/CD system. You can also export it as an environment variable `SOPS_AGE_KEY`.
+
+##### 2. Get user public keys from GitHub
+
+For individual user access, we can use their SSH public keys. `sops` has built-in support for SSH keys. You can easily retrieve any GitHub user's public SSH keys.
+
+For example, to get the keys for user `user1`:
+```bash
+curl https://github.com/user1.keys
+```
+This will output their public keys. We can then copy the relevant key.
+
+##### 3. Configure `.sops.yaml` for granular access
+
+Now, let's create a `.sops.yaml` file that uses our shared key and individual user keys.
+
+```yaml
+creation_rules:
+  # service-a is accessible by the shared key and user1
+  - path_regex: apps/service-a/.*
+    age: >-
+      age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx,
+      ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICi... user1@github
+      
+  # service-b is accessible by the shared key and user2
+  - path_regex: apps/service-b/.*
+    age: >-
+      age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx,
+      ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQ... user2@github
+
+  # Default rule for any other path
+  - path_regex: .*
+    age: "age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+```
+
+With this configuration:
+-   Any file inside `apps/service-a/` will be encrypted for the shared `age` key and for `user1`'s SSH key. `user1` can decrypt it using their local SSH private key, and the CI/CD can decrypt it using the shared `age` private key.
+-   Similarly, files in `apps/service-b/` are accessible to the CI/CD and `user2`.
+-   Any other file will be encrypted only with the shared key.
+
+When a user like `user1` runs `sops decrypt ...`, SOPS will automatically find their SSH private key (e.g., in `~/.ssh/id_ed25519`) and use it to decrypt the file.
+ 
+
+------------------------------------------
+
+## Introduction
+
+In the [previous article](/posts/sops-introduction), we covered the basics of using SOPS with SSH keys for simple secret management. Now let's explore a more advanced scenario that's common in real-world development: managing secrets across multiple services and team members with fine-grained access control.
+
+This setup is particularly useful for:
+- **Monorepos** with multiple services
+- **Teams** where different developers need access to different secrets
+- **CI/CD pipelines** that need access to specific service credentials
+- **Multi-tenant applications** with service-specific configurations
+
+## How Age Recipients Enable Access Control
+
+`Age` encryption is built around recipients. When a file is encrypted, it's encrypted for one or more recipients, and any of them can decrypt it. SOPS leverages this to provide fine-grained access control to your secrets.
+
+You can define different encryption keys for different paths in your repository. This is useful in a monorepo where different teams or services have their own secrets.
+
+Let's consider a scenario with two services, `service-a` and `service-b`, and a shared key for CI/CD environments.
+
+## Implementation
+
+<Steps>
+
+### Generate a shared `age` key
+
+First, let's create a dedicated `age` keypair that will be used for shared access, for example, in a CI/CD environment.
+
+```bash
+age-keygen -o age.key
+```
+
+This will create a file `age.key` with the private key and print the public key to standard output.
+
+```
+Public key: age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+The public key is what you'll use in `.sops.yaml`. The private key in `age.key` needs to be stored securely, for example as a secret in your CI/CD system. You can also export it as an environment variable `SOPS_AGE_KEY`.
+
+### Get user public keys from GitHub
+
+For individual user access, we can use their SSH public keys. `sops` has built-in support for SSH keys. You can easily retrieve any GitHub user's public SSH keys.
+
+For example, to get the keys for user `user1`:
+```bash
+curl https://github.com/user1.keys
+```
+This will output their public keys. We can then copy the relevant key.
+
+### Configure `.sops.yaml` for granular access
+
+Now, let's create a `.sops.yaml` file that uses our shared key and individual user keys.
+
+```yaml
+creation_rules:
+  # service-a is accessible by the shared key and user1
+  - path_regex: apps/service-a/.*
+    age: >-
+      age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx,
+      ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICi... user1@github
+      
+  # service-b is accessible by the shared key and user2
+  - path_regex: apps/service-b/.*
+    age: >-
+      age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx,
+      ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQ... user2@github
+
+  # Default rule for any other path
+  - path_regex: .*
+    age: "age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+```
+
+</Steps>
+
+## How It Works
+
+With this configuration:
+- **Service A secrets**: Any file inside `apps/service-a/` will be encrypted for the shared `age` key and for `user1`'s SSH key. `user1` can decrypt it using their local SSH private key, and the CI/CD can decrypt it using the shared `age` private key.
+- **Service B secrets**: Similarly, files in `apps/service-b/` are accessible to the CI/CD and `user2`.
+- **Default secrets**: Any other file will be encrypted only with the shared key.
+
+When a user like `user1` runs `sops decrypt ...`, SOPS will automatically find their SSH private key (e.g., in `~/.ssh/id_ed25519`) and use it to decrypt the file.
+
+## Real-World Example
+
+Here's how this might look in a typical monorepo structure:
+
+```
+my-monorepo/
+├── .sops.yaml
+├── apps/
+│   ├── frontend/
+│   │   ├── .env.local.enc          # Encrypted for CI/CD + frontend-team
+│   │   └── .env.production.enc     # Encrypted for CI/CD + frontend-team
+│   ├── backend/
+│   │   ├── .env.local.enc          # Encrypted for CI/CD + backend-team
+│   │   └── .env.production.enc     # Encrypted for CI/CD + backend-team
+│   └── shared/
+│       └── database.enc            # Encrypted for CI/CD only
+├── infrastructure/
+│   └── terraform.enc               # Encrypted for CI/CD + devops-team
+└── docs/
+    └── api-keys.enc                # Encrypted for CI/CD + all-teams
+```
+
+## Best Practices
+
+<Callout type="info">
+  **Key Rotation**: Regularly rotate your age keys and update the corresponding public keys in your `.sops.yaml` configuration.
+</Callout>
+
+<Callout type="warning">
+  **Access Auditing**: Keep track of who has access to which secrets and review access regularly.
+</Callout>
+
+- **Principle of Least Privilege**: Only grant access to secrets that are actually needed
+- **Key Management**: Store private keys securely and never commit them to version control
+- **Documentation**: Document your access control policies and key distribution procedures
+- **Monitoring**: Set up alerts for unusual access patterns or failed decryption attempts
+
+## Next Steps
+
+This advanced setup provides a solid foundation for managing secrets in complex environments. You can extend this pattern to support:
+
+- **Time-based access** using temporary keys
+- **Audit logging** for secret access
+- **Integration** with existing identity providers
+- **Automated key rotation** in CI/CD pipelines
+
+For more information, check out the [SOPS documentation](https://github.com/getsops/sops) and [Age documentation](https://github.com/FiloSottile/age). 
