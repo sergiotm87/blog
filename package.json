@@ -9,7 +9,7 @@
 	"scripts": {
 		"dev": "next --turbopack",
 		"build": "next build",
-		"postbuild": "pagefind --site out --output-path out/_pagefind",
+		"postbuild": "pagefind --site out --output-path out/_pagefind --glob \"{index.html,posts/**/*.html,tags/**/*.html}\"",
 		"preview": "rm -rf .preview && mkdir -p .preview && cp -r out .preview/blog && echo 'http://localhost:3001/blog/' && python3 -m http.server 3001 -d .preview"
 	},
 	"dependencies": {

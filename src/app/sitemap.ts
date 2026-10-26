@@ -79,9 +79,12 @@ const toSitemapEntry = (
 		return [
 			{
 				url: route,
-				lastModified: frontMatter?.timestamp
-					? new Date(frontMatter.timestamp).toISOString()
-					: new Date().toISOString(),
+				// Prefer the post date: git timestamps all point to the migration commit.
+				lastModified: frontMatter?.date
+					? new Date(frontMatter.date).toISOString()
+					: frontMatter?.timestamp
+						? new Date(frontMatter.timestamp).toISOString()
+						: new Date().toISOString(),
 			},
 		];
 	}
@@ -109,7 +112,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 	const entries = parsePageMapItems(pageMap);
 
 	return entries.map((entry) => ({
-		url: `${baseUrl}${entry.url}`,
+		// trailingSlash export: canonical URLs end with "/"
+		url: `${baseUrl}${entry.url.endsWith("/") ? entry.url : `${entry.url}/`}`,
 		lastModified: entry.lastModified,
 		changeFrequency: "weekly" as const,
 		priority: entry.url === "/" ? 1 : 0.8,

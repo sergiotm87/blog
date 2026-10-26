@@ -188,7 +188,7 @@ Create a new function with the golang-middleware template from store. Golang and
 
 Add a goroutine to launch the worker in the main function on the template:
 
-```golang
+```go
 // template/golang-middleware/main.go
 func main() {
 	readTimeout := parseIntOrDurationValue(os.Getenv("read_timeout"), defaultTimeout)
@@ -211,7 +211,7 @@ func main() {
 
 Write the function handler. This is the same code used before:
 
-```golang
+```go
 // temporalio-helloworld/handler.go
 package function
 
