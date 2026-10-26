@@ -82,7 +82,9 @@ export function loadGA() {
 }
 
 // github.io is a public suffix, so GA cookies live on sergiotm87.github.io, path "/".
-function clearGaCookies() {
+// Also called on every page load without consent: gtag.js can rewrite _ga_<id>
+// while the page unloads after a withdrawal, so a one-off delete is not enough.
+export function clearGaCookies() {
 	const host = location.hostname;
 	for (const part of document.cookie.split(";")) {
 		const name = part.split("=")[0].trim();
@@ -100,6 +102,8 @@ function clearGaCookies() {
 }
 
 function revoke() {
+	// Stop gtag.js from writing cookies again before the reload.
+	window.gtag?.("consent", "update", { analytics_storage: "denied" });
 	clearGaCookies();
 	// gtag.js cannot be unloaded once running, so a reload is the only way to stop it.
 	if (window.__gaLoaded) location.reload();

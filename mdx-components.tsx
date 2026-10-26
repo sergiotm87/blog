@@ -1,5 +1,6 @@
 import { Posts } from "@/components/posts";
 import { Tags } from "@/components/tags";
+import { YouTube } from "@/components/youtube";
 import { useMDXComponents as getBlogMDXComponents } from "nextra-theme-blog";
 import { useMDXComponents as getNextraComponents } from "nextra/mdx-components";
 
@@ -31,5 +32,6 @@ export function useMDXComponents() {
 		...defaultComponents,
 		Posts: Posts,
 		Tags: Tags,
+		YouTube: YouTube,
 	};
 }

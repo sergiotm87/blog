@@ -4,11 +4,14 @@
 import {
 	type Choice,
 	OPEN_EVENT,
+	clearGaCookies,
 	loadGA,
 	readConsent,
 	writeConsent,
 } from "@/lib/consent";
-import { Link } from "next-view-transitions";
+// The theme renders the banner outside <ViewTransitions>, so use next/link here:
+// the view-transitions Link would hang until the browser times out.
+import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 
@@ -41,6 +44,7 @@ export function CookieBanner() {
 		const c = readConsent();
 		prior.current = c;
 		if (c === "granted") loadGA(); // returning reader who already accepted
+		else clearGaCookies(); // leftovers from a withdrawal or an expired choice
 		setPhase(c ? "done" : "idle");
 		const reopen = () => {
 			clearTimers();
