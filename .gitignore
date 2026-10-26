@@ -1,1 +1,8 @@
-public
+node_modules
+.next
+out
+/.idea
+_pagefind/
+/.env
+next-env.d.ts
+.preview
