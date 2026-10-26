@@ -1,18 +1,9 @@
+import { GopherMark } from "@/components/gopher-mark";
 import { Link } from "next-view-transitions";
 import React from "react";
 
-const BASE_PATH = "/blog";
-
 const Logo = ({ hasLink = true, title = "Go to home" }) => {
-	const mark = (
-		<img
-			src={`${BASE_PATH}/logos/gopher-head.png`}
-			alt=""
-			width={67}
-			height={42}
-			className="h-[42px] w-auto"
-		/>
-	);
+	const mark = <GopherMark />;
 
 	if (!hasLink) return mark;
 

@@ -1,45 +1,48 @@
-/* Cookie consent banner: the gopher eats the cookie when the reader accepts.
-   Imported from globals.css, before any other rule (CSS ignores late @import). */
-/* WCAG 2.4.11 / C43: --cg-h is set by the component (ResizeObserver) while the banner is mounted */
-html.cg-open { scroll-padding-bottom:calc(var(--cg-h, 0px) + 8px); }
-html.cg-open body { padding-bottom:var(--cg-h, 0px); }
+/* Cookie consent banner (top of the page) and the header gopher that eats the cookie.
+   Imported from globals.css, before any other rule (CSS ignores late @import).
+   Components: src/components/cookie-banner.tsx, gopher-mark.tsx, cookie-svg.tsx. */
+
+/* ---------- the cookie ---------- */
+.cookie-svg { display:block; width:100%; height:100%; overflow:visible; }
+.cookie-bite { opacity:0; }
+.cookie-svg[data-bites="1"] .cookie-bite-1,
+.cookie-svg[data-bites="2"] :is(.cookie-bite-1,.cookie-bite-2),
+.cookie-svg[data-bites="3"] .cookie-bite { opacity:1; }
+
+/* ---------- banner: same width as the article (700 px container, 16 px gutters) ---------- */
 .cg-banner {
-  --cg-surface:#fffdf7; --cg-border:rgb(29 26 22 / .10); --cg-text:#1d1a16; --cg-muted:#5f574c;
-  --cg-btn:#1d1a16; --cg-btn-fg:#faf5e9; --cg-ground:rgb(29 26 22 / .18);
-  --cg-mouth:#2b1a1e;
-  position:fixed; inset:auto 0 0 0; z-index:50;
-  padding:0 16px 16px; /* env(safe-area-inset-*) is 0 unless layout exports viewport { viewportFit: "cover" } */
-  pointer-events:none;
+  --cg-surface:#fffdf7; --cg-border:rgb(29 26 22 / .10); --cg-text:#1d1a16; --cg-muted:#5f574c; --cg-btn:#1d1a16;
+  position:relative; z-index:20;
+  max-width:700px; margin:16px auto 0; padding:0 16px;
 }
 .dark .cg-banner {
-  --cg-surface:#1f1a14; --cg-border:rgb(255 255 255 / .10); --cg-text:#f2ede4; --cg-muted:#b3aa9c;
-  --cg-btn:#f2ede4; --cg-btn-fg:#15120d; --cg-ground:rgb(255 255 255 / .16);
+  --cg-surface:#1f1a14; --cg-border:rgb(255 255 255 / .10); --cg-text:#f2ede4; --cg-muted:#b3aa9c; --cg-btn:#f2ede4;
 }
+.cg-banner[data-phase="leaving"] { overflow:hidden; }
 .cg-card {
-  pointer-events:auto;
-  max-width:700px; margin:0 auto;
-  display:grid; grid-template-columns:auto 1fr; gap:6px 14px; align-items:end;
-  padding:12px 14px 12px 12px;
+  display:grid; grid-template-columns:1fr auto; gap:6px 14px; align-items:center;
+  grid-template-areas:"head cookie" "body body" "act act";
+  padding:12px 14px;
   background:var(--cg-surface); color:var(--cg-text);
   border:1px solid var(--cg-border); border-radius:14px;
   box-shadow:0 10px 30px -12px rgb(0 0 0 / .25);
   font-size:13px; line-height:1.4;
   animation: cg-enter 260ms cubic-bezier(.2,.8,.2,1) both;
 }
-/* Long legal text: the heading sits next to the gopher, the text spans the full width below */
-.cg-card { grid-template-areas:"fig head" "body body" "act act"; }
-.cg-figure { grid-area:fig; }
-.cg-copy { display:contents; }
-.cg-copy strong { grid-area:head; align-self:end; font-weight:600; font-size:15px; }
-.cg-copy p { grid-area:body; }
-.cg-copy p { margin:2px 0 0; color:var(--cg-muted); }
-.cg-copy a { color:inherit; text-decoration:underline; text-underline-offset:2px; }
-.cg-actions { grid-area:act; display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.cg-title { grid-area:head; font-weight:600; font-size:15px; }
+.cg-text { grid-area:body; margin:0; color:var(--cg-muted); }
+.cg-text a { color:inherit; text-decoration:underline; text-underline-offset:2px; }
+.cg-actions { grid-area:act; display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:4px; }
+.cg-plate { grid-area:cookie; justify-self:end; display:block; width:40px; aspect-ratio:1; }
 @media (min-width:560px) {
-  .cg-card { grid-template-areas:"fig head" "fig body" "fig act"; }
-  .cg-actions { display:flex; justify-content:flex-end; }
-  .cg-card { font-size:14px; line-height:1.45; }
+  .cg-card { grid-template-areas:"head cookie" "body cookie" "act cookie"; column-gap:20px; font-size:14px; line-height:1.45; padding:14px 18px; }
+  .cg-actions { display:flex; justify-content:flex-start; }
+  .cg-plate { width:56px; }
 }
+/* The flying copy takes over while the banner folds away */
+.cg-banner[data-phase="leaving"] .cg-plate { visibility:hidden; }
+.cg-fly { position:fixed; z-index:60; pointer-events:none; will-change:transform; }
+
 /* Identical style, size, weight and contrast for Reject and Accept (AEPD cookie guide 3.1.2.2). 44 px targets. */
 .cg-btn {
   font:inherit; font-weight:500; font-size:14px; min-height:44px; min-width:44px; padding:0 18px;
@@ -48,98 +51,87 @@ html.cg-open body { padding-bottom:var(--cg-h, 0px); }
 }
 .cg-btn:focus-visible { outline:2px solid var(--cg-text); outline-offset:2px; }
 .cg-btn[aria-disabled="true"] { cursor:default; }
+@keyframes cg-enter { from { transform:translateY(-12px); opacity:0; } }
 
-/* ---------- the figure ---------- */
-.cg-figure { position:relative; width:116px; aspect-ratio:290/127; align-self:end; }
-@media (min-width:560px) { .cg-figure { width:156px; } }
-.cg-figure::after { /* ground line */
-  content:""; position:absolute; left:-4%; right:-4%; bottom:0; height:1.5px; border-radius:2px; background:var(--cg-ground);
-}
-.cg-stage { position:absolute; inset:0; clip-path:inset(-200% -200% 0 -200%); } /* clips only below the ground */
-.cg-layer { position:absolute; left:0; top:0; width:69.31%; height:100%; /* 201/290 */
-  transform-origin:50% 100%; display:block; user-select:none; -webkit-user-drag:none; }
-img.cg-layer { object-fit:contain; }
-.cg-mouth::before { /* dark mouth behind the teeth: x 90..110, y 101..115 */
+/* ---------- header gopher: layers over gopher-head.png (201×127, all % are of that box) ---------- */
+.gm { --gm-mouth:#2b1a1e; --gm-bubble:#1d1a16; --gm-bubble-fg:#faf5e9;
+  position:relative; display:inline-block; flex:none; height:42px; aspect-ratio:201/127; }
+.dark .gm { --gm-bubble:#f2ede4; --gm-bubble-fg:#15120d; }
+.gm-head { position:absolute; inset:0; transform-origin:50% 100%; }
+.gm-layer { position:absolute; inset:0; width:100%; height:100%; max-width:none; margin:0; display:block;
+  user-select:none; -webkit-user-drag:none; }
+.gm-eyes { overflow:visible; pointer-events:none; }
+.gm-pupil { transition:transform 120ms ease-out; }
+.gm-mouth::before { /* dark mouth behind the teeth: x 90..110, y 101..115 */
   content:""; position:absolute; left:44.78%; top:79.53%; width:9.95%; height:11%;
-  background:var(--cg-mouth); border-radius:20% 20% 45% 45%; opacity:0;
+  background:var(--gm-mouth); border-radius:20% 20% 45% 45%; opacity:0;
 }
-.cg-jaw    { clip-path:inset(79.53% 44.28% 4.72% 43.78% round 0 0 45% 45%); } /* teeth block x 88..112, y 101..121, rounded so no lilac corners */
-.cg-muzzle { clip-path:ellipse(10.8% 8.6% at 49.6% 74%); }        /* muzzle + nose, sits above the cookie */
+.gm-jaw    { clip-path:inset(79.53% 44.28% 4.72% 43.78% round 0 0 45% 45%); } /* teeth x 88..112, y 101..121 */
+.gm-muzzle { clip-path:ellipse(10.8% 8.6% at 49.6% 74%); }                  /* muzzle + nose, above the cookie */
+/* tongue: x 92..108, y 106..120, hidden behind the teeth until it licks */
+.gm-tongue { position:absolute; left:45.77%; top:83.46%; width:7.96%; height:11.02%; opacity:0;
+  background:linear-gradient(90deg, #d9506f 0 46%, #b8405b 46% 54%, #d9506f 54%);
+  border-radius:35% 35% 50% 50% / 25% 25% 75% 75%; transform-origin:50% 0; }
+/* the cookie in the mouth: 48 native px, centre (128,103), bottom on the ground */
+.gm-cookie { position:absolute; left:51.74%; top:62.2%; width:23.88%; aspect-ratio:1; visibility:hidden; }
+.gm-crumbs { position:absolute; left:54.7%; top:88%; width:0; height:0; }
+.gm-crumbs i { position:absolute; width:3px; height:3px; border-radius:1px; background:#c98b45; opacity:0; }
+.gm-crumbs i:nth-child(3n) { background:#5a3a22; width:2px; height:2px; }
+.gm-bubble { position:absolute; left:68%; bottom:100%; margin-bottom:2px; padding:1px 7px; border-radius:999px;
+  font-size:11px; line-height:16px; font-weight:600; white-space:nowrap; pointer-events:none;
+  background:var(--gm-bubble); color:var(--gm-bubble-fg); opacity:0; transform-origin:0% 100%; }
+.gm-bubble::after { content:""; position:absolute; left:6px; bottom:-3px; width:6px; height:6px; background:inherit; transform:rotate(45deg); }
 
-.cg-cookie { position:absolute; left:81.03%; top:66.93%; width:13.79%; aspect-ratio:1; /* centre (255,105) */
-  transform-origin:50% 50%; }
-.cg-cookie svg { display:block; width:100%; height:100%; overflow:visible; }
-.cg-bite { opacity:0; }
-.cg-cookie[data-bites="1"] .cg-bite-1,
-.cg-cookie[data-bites="2"] :is(.cg-bite-1,.cg-bite-2),
-.cg-cookie[data-bites="3"] .cg-bite { opacity:1; }
+/* WAITING: licks its lips twice (done within 5 s, WCAG 2.2.2); the eyes follow the pointer or the cookie (JS) */
+[data-mood="waiting"] .gm-tongue { animation: gm-lick 2000ms ease-in-out 800ms 2; }
 
-.cg-crumbs { position:absolute; left:38%; top:88%; width:0; height:0; }
-.cg-crumbs i { position:absolute; width:4px; height:4px; border-radius:1px; background:#c98b45; opacity:0; }
-.cg-crumbs i:nth-child(3n) { background:#5a3a22; width:3px; height:3px; }
-
-.cg-yum { position:absolute; left:58%; top:-4%; padding:1px 7px; border-radius:999px; font-size:11px; font-weight:600;
-  background:var(--cg-btn); color:var(--cg-btn-fg); opacity:0; transform-origin:0% 100%; white-space:nowrap; }
-.cg-yum::after { content:""; position:absolute; left:6px; bottom:-3px; width:6px; height:6px; background:inherit; transform:rotate(45deg); }
-
-/* ---------- timeline: ACCEPT (all ms from the click) ---------- */
-[data-phase="eating"] {
-  --t-chomp:240ms;     /* first chomp cycle starts              */
-  --chomp:180ms;       /* one open→close cycle (bites 420/600/780, gulp closes at 960) */
-  --t-yum:960ms;       /* "Yum!" + happy hop                    */
-  --t-exit:1250ms;     /* banner slides away (250 ms) → 1500 ms */
+/* EATING (ms from the cookie reaching the mouth) */
+[data-mood="eating"] {
+  --t-chomp:60ms;   /* first chomp cycle                                 */
+  --chomp:180ms;    /* one open→close cycle: bites at 240/420/600 (JS)   */
+  --t-yum:780ms;    /* gulp done, "Yum!" + happy hop                      */
 }
-[data-phase="eating"] .cg-cookie   { animation: cg-fly 300ms cubic-bezier(.45,0,.4,1) 0ms both,
-                                              cg-gulp 100ms ease-in calc(var(--t-yum) - 100ms) forwards; }
-[data-phase="eating"] .cg-mouth::before { animation: cg-mouth var(--chomp) linear var(--t-chomp) 4; }
-[data-phase="eating"] .cg-layer    { animation-name: cg-lean, cg-munch, cg-hop;
-  animation-duration: 240ms, var(--chomp), 260ms;
-  animation-delay: 0ms, var(--t-chomp), var(--t-yum);
-  animation-iteration-count: 1, 4, 1;
-  animation-timing-function: ease-out, ease-in-out, ease-out;
-}
-/* jaw/muzzle carry two animations: head motion on `transform`, their own on `translate`/opacity */
-[data-phase="eating"] .cg-jaw    { animation: cg-lean 240ms ease-out 0ms, cg-munch var(--chomp) ease-in-out var(--t-chomp) 4, cg-hop 260ms ease-out var(--t-yum),
-                                              cg-jaw var(--chomp) ease-in-out var(--t-chomp) 4; }
-[data-phase="eating"] .cg-muzzle { animation: cg-lean 240ms ease-out 0ms, cg-munch var(--chomp) ease-in-out var(--t-chomp) 4, cg-hop 260ms ease-out var(--t-yum),
-                                              cg-lip var(--chomp) ease-in-out var(--t-chomp) 4; }
-[data-phase="eating"] .cg-crumbs i { animation: cg-crumb 460ms cubic-bezier(.3,.6,.5,1) calc(var(--t-chomp) + var(--chomp) * var(--b)) both; }
-[data-phase="eating"] .cg-yum      { animation: cg-pop 200ms cubic-bezier(.3,1.6,.5,1) var(--t-yum) both; }
-[data-phase="eating"] .cg-card     { animation: cg-exit 250ms ease-in var(--t-exit) both; }
+[data-mood="eating"] .gm-cookie { visibility:visible; animation: gm-gulp 100ms ease-in calc(var(--t-yum) - 100ms) forwards; }
+[data-mood="eating"] .gm-head   { animation: gm-munch var(--chomp) ease-in-out var(--t-chomp) 4, gm-hop 260ms ease-out var(--t-yum); }
+[data-mood="eating"] .gm-jaw    { animation: gm-jaw var(--chomp) ease-in-out var(--t-chomp) 4; }
+[data-mood="eating"] .gm-muzzle { animation: gm-lip var(--chomp) ease-in-out var(--t-chomp) 4; }
+[data-mood="eating"] .gm-mouth::before { animation: gm-mouth var(--chomp) linear var(--t-chomp) 4; }
+[data-mood="eating"] .gm-crumbs i { animation: gm-crumb 460ms cubic-bezier(.3,.6,.5,1) calc(var(--t-chomp) + var(--chomp) * var(--b)) both; }
+[data-mood="eating"] .gm-bubble { animation: gm-bubble 1300ms ease-out var(--t-yum) both; }
 
-/* ---------- timeline: REJECT (neutral: gopher stays still, puts the cookie away) ---------- */
-[data-phase="declining"] .cg-cookie { animation: cg-put-away 260ms ease-in 0ms both; }
-[data-phase="declining"] .cg-card   { animation: cg-exit 250ms ease-in 250ms both; }
+/* D'OH (reject): the eyes follow the cookie rolling away (JS), then the bubble */
+[data-mood="doh"] .gm-bubble { animation: gm-bubble 1300ms ease-out 350ms both; }
+[data-mood="doh"] .gm-head   { animation: gm-slump 500ms ease-in-out 350ms; }
 
-/* ---------- keyframes ---------- */
-@keyframes cg-enter { from { transform:translateY(16px); opacity:0; } }
-@keyframes cg-exit  { to { transform:translateY(calc(100% + 24px)); opacity:0; } }
-@keyframes cg-fly {           /* resting (255,105) → mouth (104,115); % are cookie widths (40 native) */
-  0%   { transform:translate(0,0) rotate(0) scale(1); }
-  18%  { transform:translate(0,8%) rotate(0) scale(1.12,.86); }          /* wind-up squash */
-  55%  { transform:translate(-210%,-110%) rotate(-200deg) scale(.95); }   /* top of the arc */
-  100% { transform:translate(-332%,30%) rotate(-360deg) scale(.85); }     /* at the teeth   */
+@keyframes gm-lick {
+  0%, 60%, 100% { opacity:0; transform:none; }
+  4%  { opacity:1; transform:none; }
+  14% { opacity:1; transform:translate(0, 55%) rotate(0); }
+  24% { opacity:1; transform:translate(-30%, 62%) rotate(-14deg); }
+  36% { opacity:1; transform:translate(30%, 62%) rotate(14deg); }
+  46% { opacity:1; transform:translate(0, 50%) rotate(0); }
+  56% { opacity:1; transform:none; }
 }
-@keyframes cg-gulp  { from { transform:translate(-332%,30%) rotate(-360deg) scale(.85); }
-                      to   { transform:translate(-360%,15%) rotate(-370deg) scale(0); opacity:.6; } }
-@keyframes cg-mouth { 0%,100% { opacity:0; } 15%,80% { opacity:1; } }
-@keyframes cg-jaw   { 0%,100% { translate:0 0; } 35%,65% { translate:0 6.3%; } }   /* 8 native px */
-@keyframes cg-lip   { 0%,100% { translate:0 0; } 35%,65% { translate:0 -1.6%; } }  /* 2 native px */
-@keyframes cg-lean  { 50% { transform:skewX(-6deg); } }   /* accept: only skew/scale from the base, so the cut bottom stays on the ground */
-@keyframes cg-munch { 0%,100% { transform:none; } 85% { transform:scale(1.05,.94); } }
-@keyframes cg-hop   { 35% { transform:scale(.96,1.08) skewX(3deg); } 70% { transform:scale(1.02,.97) skewX(-2deg); } }
-@keyframes cg-crumb {
+@keyframes gm-gulp  { to { transform:translate(-45%, 8%) scale(0); opacity:.6; } }
+@keyframes gm-mouth { 0%,100% { opacity:0; } 15%,80% { opacity:1; } }
+@keyframes gm-jaw   { 0%,100% { translate:0 0; } 35%,65% { translate:0 6.3%; } }   /* 8 native px */
+@keyframes gm-lip   { 0%,100% { translate:0 0; } 35%,65% { translate:0 -1.6%; } }  /* 2 native px */
+@keyframes gm-munch { 0%,100% { transform:none; } 85% { transform:scale(1.05,.94); } }
+@keyframes gm-hop   { 35% { transform:scale(.96,1.08) skewX(3deg); } 70% { transform:scale(1.02,.97) skewX(-2deg); } }
+@keyframes gm-slump { 40% { transform:scale(1.03,.92); } }
+@keyframes gm-crumb {
   0%   { opacity:0; transform:translate(0,0) rotate(0); }
   10%  { opacity:1; }
   45%  { transform:translate(calc(var(--dx) * .6), var(--up)) rotate(90deg); }
-  100% { opacity:0; transform:translate(var(--dx), 6px) rotate(220deg); }
+  100% { opacity:0; transform:translate(var(--dx), 4px) rotate(220deg); }
 }
-@keyframes cg-pop   { from { opacity:0; transform:scale(.4) translateY(6px); } to { opacity:1; transform:none; } }
-@keyframes cg-put-away { to { transform:translateY(110%); opacity:0; } }   /* slides below the ground line */
+@keyframes gm-bubble {
+  0%   { opacity:0; transform:scale(.4) translateY(6px); }
+  15%  { opacity:1; transform:none; }
+  85%  { opacity:1; transform:none; }
+  100% { opacity:0; transform:none; }
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .cg-banner *, .cg-banner *::before { animation:none !important; transition:none !important; }
+  :is(.cg-banner, .gm) *, :is(.cg-banner, .gm) *::before { animation:none !important; transition:none !important; }
 }
-
-/* The AI-assistance notice also sits at the bottom: hide it while the consent banner is up. */
-html.cg-open .ai-banner { display:none; }

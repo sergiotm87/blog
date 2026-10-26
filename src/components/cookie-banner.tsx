@@ -1,6 +1,9 @@
 "use client";
-// Cookie consent banner, mounted through <Layout banner={...}> so it sits outside
-// the theme's prose <article>. Styles live in src/styles/cookie-gopher.css.
+// Cookie consent banner at the top of the page, mounted through <Layout banner={...}> so it sits
+// outside the theme's prose <article>, right above the header. The cookie on its right is for the
+// header gopher (src/components/gopher-mark.tsx): accept → the banner goes away and the cookie rolls
+// into its mouth; reject → it rolls off to the right. Styles: src/styles/cookie-gopher.css.
+import { CookieSvg } from "@/components/cookie-svg";
 import {
 	type Choice,
 	OPEN_EVENT,
@@ -9,35 +12,32 @@ import {
 	readConsent,
 	writeConsent,
 } from "@/lib/consent";
+import { LOOK_ATTR, SLOT_ATTR, setMood } from "@/lib/gopher";
 // The theme renders the banner outside <ViewTransitions>, so use next/link here:
 // the view-transitions Link would hang until the browser times out.
 import Link from "next/link";
-import { useEffect, useId, useRef, useState } from "react";
-import type { CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-const BASE_PATH = "/blog";
-const HEAD = `${BASE_PATH}/logos/gopher-head.png`; // same asset as the header logo → already cached
-const ACCEPT_MS = 1500; // = --t-exit (1250) + 250 ms exit, ≤ 1.5 s
-const DECLINE_MS = 500; // neutral: cookie put away 0–260, card exits 250–500
-const BITES_AT = [420, 600, 780]; // = --t-chomp + --chomp × n (jaw closes)
-type Phase = "unknown" | "idle" | "eating" | "declining" | "done";
+const COLLAPSE_MS = 300; // banner fades and folds away
+const HOP_MS = 480; // cookie hops from the banner onto the header row
+const AWAY_MS = 700; // reject: cookie rolls off the right edge
+type Phase = "unknown" | "idle" | "leaving" | "done";
+type Flight = { kind: "eat" | "away"; x: number; y: number; size: number };
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 export function CookieBanner() {
 	const [phase, setPhase] = useState<Phase>("unknown");
 	const [message, setMessage] = useState("");
-	const [bites, setBites] = useState(0);
-	const timers = useRef<number[]>([]);
+	const [flight, setFlight] = useState<Flight | null>(null);
 	const prior = useRef<Choice | null>(null); // choice in force when the banner was shown
 	const returnFocus = useRef<HTMLElement | null>(null); // where focus was before it entered the banner
-	const firstBtn = useRef<HTMLButtonElement>(null);
-	const card = useRef<HTMLDivElement>(null);
+	const focusWasInside = useRef(false);
 	const focusOnShow = useRef(false);
-	const maskId = useId(); // React 19.2: "_R_…_" → safe inside url(#…)
-
-	const clearTimers = () => {
-		timers.current.forEach(clearTimeout);
-		timers.current = [];
-	};
+	const firstBtn = useRef<HTMLButtonElement>(null);
+	const section = useRef<HTMLElement>(null);
+	const cookie = useRef<HTMLSpanElement>(null);
+	const fly = useRef<HTMLDivElement>(null);
 
 	// Static export: decide only after mount (no hydration mismatch).
 	useEffect(() => {
@@ -46,71 +46,163 @@ export function CookieBanner() {
 		if (c === "granted") loadGA(); // returning reader who already accepted
 		else clearGaCookies(); // leftovers from a withdrawal or an expired choice
 		setPhase(c ? "done" : "idle");
+		if (!c) setMood("waiting");
 		const reopen = () => {
-			clearTimers();
 			prior.current = readConsent();
 			returnFocus.current = document.activeElement as HTMLElement | null; // the footer button
 			focusOnShow.current = true; // user asked for it → moving focus is not "stealing" it
+			setFlight(null);
 			setMessage("");
-			setBites(0);
 			setPhase("idle");
+			setMood("waiting");
 		};
 		window.addEventListener(OPEN_EVENT, reopen);
-		return () => {
-			window.removeEventListener(OPEN_EVENT, reopen);
-			clearTimers();
-		};
+		return () => window.removeEventListener(OPEN_EVENT, reopen);
 	}, []);
 
-	const visible = phase === "idle" || phase === "eating" || phase === "declining";
-
-	// Reopen from the footer: focus the first button once it exists.
+	// Reopened from the footer: go up to the banner (and the gopher) and focus the first button.
 	useEffect(() => {
 		if (phase === "idle" && focusOnShow.current) {
 			focusOnShow.current = false;
-			firstBtn.current?.focus();
+			firstBtn.current?.focus({ preventScroll: true });
+			const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+			window.scrollTo({ top: 0, behavior: reduced ? "auto" : "smooth" });
 		}
 	}, [phase]);
 
-	// WCAG 2.4.11 / technique C43: while the fixed banner is up, reserve its height so it never covers
-	// the focused element or the end of the page.
-	useEffect(() => {
-		if (!visible || !card.current) return;
-		const root = document.documentElement;
-		const ro = new ResizeObserver(([e]) => root.style.setProperty("--cg-h", `${Math.ceil(e.borderBoxSize[0].blockSize) + 16}px`));
-		ro.observe(card.current);
-		root.classList.add("cg-open");
-		return () => {
-			ro.disconnect();
-			root.classList.remove("cg-open");
-			root.style.removeProperty("--cg-h");
-		};
-	}, [visible]);
+	const closeBanner = () => {
+		setPhase("done");
+		if (!focusWasInside.current) return;
+		const back = returnFocus.current;
+		returnFocus.current = null;
+		if (back?.isConnected) back.focus({ preventScroll: true });
+		else (document.activeElement as HTMLElement | null)?.blur(); // → <body>
+	};
 
 	function choose(choice: Choice) {
 		if (phase !== "idle") return;
 		const was = prior.current;
 		writeConsent(choice); // side effects now; GA never waits for the animation (may reload on revoke)
 		setMessage(choice === "granted" ? "Analytics cookies accepted." : "Analytics cookies rejected.");
-		const focusWasInside = card.current?.contains(document.activeElement) ?? false;
-		const finish = () => {
-			setPhase("done");
-			if (!focusWasInside) return;
-			const back = returnFocus.current;
-			returnFocus.current = null;
-			if (back?.isConnected) back.focus({ preventScroll: true });
-			else (document.activeElement as HTMLElement | null)?.blur(); // → <body>
-		};
+		focusWasInside.current = section.current?.contains(document.activeElement) ?? false;
 		const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-		const animateAccept = choice === "granted" && was !== "granted"; // re-accepting is not rewarded again
-		const animateDecline = choice === "denied" && was === null; // first answer only; denied→denied just closes
-		if (reduced || (!animateAccept && !animateDecline)) return finish();
-		setPhase(animateAccept ? "eating" : "declining");
-		timers.current.push(window.setTimeout(finish, animateAccept ? ACCEPT_MS : DECLINE_MS));
-		// Bites via data-bites instead of CSS animations inside <mask> (precaution, not a verified WebKit bug)
-		if (animateAccept) BITES_AT.forEach((t, i) => timers.current.push(window.setTimeout(() => setBites(i + 1), t)));
+		// First answer only: re-accepting is not rewarded again, denied→denied just closes
+		const animate = choice === "granted" ? was !== "granted" : was === null;
+		const from = cookie.current?.getBoundingClientRect();
+		if (reduced || !animate || !from) {
+			setMood("still");
+			return closeBanner();
+		}
+		setFlight({ kind: choice === "granted" ? "eat" : "away", x: from.left, y: from.top, size: from.width });
+		setPhase("leaving");
+		if (choice === "denied") setMood("doh"); // the gopher watches it roll away
 	}
 
+	// The cookie's trip. Layout effect: the flying copy replaces the banner one before paint.
+	useLayoutEffect(() => {
+		if (!flight) return;
+		const sec = section.current;
+		const el = fly.current;
+		if (!sec || !el) return;
+		let alive = true;
+		const anims: Animation[] = [];
+		const run = (a: Animation) => {
+			anims.push(a);
+			return a.finished;
+		};
+		const { kind, x, y, size } = flight;
+
+		(async () => {
+			const collapse = run(
+				sec.animate(
+					[
+						{ opacity: 1, height: `${sec.offsetHeight}px`, marginTop: getComputedStyle(sec).marginTop },
+						{ opacity: 0, height: "0px", marginTop: "0px" },
+					],
+					{ duration: COLLAPSE_MS, easing: "cubic-bezier(.4,0,.2,1)", fill: "forwards" },
+				),
+			);
+
+			if (kind === "away") {
+				const dist = window.innerWidth - x + 8;
+				const turns = Math.max(1, Math.round(dist / (Math.PI * size)));
+				const roll = run(
+					el.animate(
+						[
+							{ transform: "translate(0px, 0px) rotate(0deg)", opacity: 1 },
+							{ opacity: 1, offset: 0.8 },
+							{ transform: `translate(${dist}px, 0px) rotate(${turns * 360}deg)`, opacity: 0 },
+						],
+						{ duration: AWAY_MS, easing: "cubic-bezier(.45,0,.8,.5)", fill: "forwards" },
+					),
+				);
+				await collapse;
+				if (!alive) return;
+				closeBanner();
+				await roll;
+				if (alive) setFlight(null);
+				return;
+			}
+
+			await collapse;
+			if (!alive) return;
+			closeBanner();
+			// Measured after the banner is gone: the header has moved up into its place.
+			const t = document.querySelector(`[${SLOT_ATTR}]`)?.getBoundingClientRect();
+			if (!t || t.width === 0 || t.bottom < 0 || t.top > window.innerHeight) {
+				// Gopher out of sight: no trip, the cookie just fades.
+				await run(el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: "forwards" }));
+				if (alive) {
+					setFlight(null);
+					setMood("still");
+				}
+				return;
+			}
+			const k = t.width / size; // shrink to the gopher's scale
+			const dx = t.left + t.width / 2 - (x + size / 2);
+			const dy = t.top + t.height / 2 - (y + size / 2);
+			const peak = Math.min(0, dy) - 28;
+			const sq = size * k * 0.08; // keeps the bottom on the ground while squashed
+			await run(
+				el.animate(
+					[
+						{ transform: "translate(0px, 0px) rotate(0deg) scale(1)", easing: "ease-out" },
+						{ transform: `translate(0px, ${peak}px) rotate(0deg) scale(${(1 + k) / 2})`, offset: 0.45, easing: "ease-in" },
+						{ transform: `translate(0px, ${dy}px) rotate(0deg) scale(${k})`, offset: 0.82 },
+						{ transform: `translate(0px, ${dy + sq}px) rotate(0deg) scale(${k * 1.12}, ${k * 0.84})`, offset: 0.9 },
+						{ transform: `translate(0px, ${dy}px) rotate(0deg) scale(${k})` },
+					],
+					{ duration: HOP_MS, fill: "forwards" },
+				),
+			);
+			if (!alive) return;
+			// Whole turns, so the cookie lands in the same orientation as the one in the gopher's mouth.
+			const turns = Math.max(1, Math.round(Math.abs(dx) / (Math.PI * size * k)));
+			await run(
+				el.animate(
+					[
+						{ transform: `translate(0px, ${dy}px) rotate(0deg) scale(${k})` },
+						{ transform: `translate(${dx}px, ${dy}px) rotate(${-turns * 360}deg) scale(${k})` },
+					],
+					{ duration: clamp(Math.abs(dx) * 1.3, 450, 1100), easing: "cubic-bezier(.25,.1,.35,1)", fill: "forwards" },
+				),
+			);
+			if (!alive) return;
+			setMood("eating"); // the gopher's own cookie takes over, under its teeth
+			setFlight(null);
+		})().catch(() => {
+			// animation cancelled (unmount or reopen)
+		});
+
+		return () => {
+			alive = false;
+			for (const a of anims) a.cancel();
+		};
+		// closeBanner only touches refs and setters
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [flight]);
+
+	const visible = phase === "idle" || phase === "leaving";
 	const busy = phase !== "idle";
 	return (
 		<>
@@ -120,43 +212,25 @@ export function CookieBanner() {
 			</div>
 
 			{visible && (
-				<section className="cg-banner not-prose" data-phase={phase} aria-label="Cookie consent" data-pagefind-ignore="all">
-					<div
-						className="cg-card"
-						ref={card}
-						onFocus={(e) => {
-							const from = e.relatedTarget as HTMLElement | null;
-							if (from && !card.current?.contains(from) && !returnFocus.current) returnFocus.current = from;
-						}}
-					>
-						<div className="cg-figure" aria-hidden="true">
-							<div className="cg-stage">
-								<img className="cg-layer cg-base" src={HEAD} alt="" width={201} height={127} draggable={false} />
-								<div className="cg-layer cg-mouth" />
-								<div className="cg-cookie" data-bites={bites}>
-									<CookieSvg maskId={maskId} />
-								</div>
-								<img className="cg-layer cg-jaw" src={HEAD} alt="" width={201} height={127} draggable={false} />
-								<img className="cg-layer cg-muzzle" src={HEAD} alt="" width={201} height={127} draggable={false} />
-								<div className="cg-crumbs">
-									{CRUMBS.map((c, i) => (
-										<i key={i} style={{ "--b": c[0], "--dx": `${c[1]}px`, "--up": `${c[2]}px` } as CSSProperties} />
-									))}
-								</div>
-							</div>
-							<span className="cg-yum">Yum!</span>
-						</div>
-
-						<div className="cg-copy">
-							<strong>Cookies?</strong>
-							<p>
-								With your permission, this blog uses third-party cookies from Google Analytics to count visits and see
-								which posts get read. Google may also use this data for its own purposes, and it may be transferred to the
-								US. No analytics cookies are set unless you accept. You can change your mind anytime via &ldquo;Cookie
-								settings&rdquo; in the footer. <Link href="/privacy/">Cookie policy</Link>
-							</p>
-						</div>
-
+				<section
+					ref={section}
+					className="cg-banner not-prose"
+					data-phase={phase}
+					aria-label="Cookie consent"
+					data-pagefind-ignore="all"
+					onFocus={(e) => {
+						const from = e.relatedTarget as HTMLElement | null;
+						if (from && !section.current?.contains(from) && !returnFocus.current) returnFocus.current = from;
+					}}
+				>
+					<div className="cg-card">
+						<strong className="cg-title">Cookies?</strong>
+						<p className="cg-text">
+							With your permission, this blog uses third-party cookies from Google Analytics to count visits and see
+							which posts get read. Google may also use this data for its own purposes, and it may be transferred to the
+							US. No analytics cookies are set unless you accept. You can change your mind anytime via &ldquo;Cookie
+							settings&rdquo; in the footer. <Link href="/privacy/">Cookie policy</Link>
+						</p>
 						<div className="cg-actions">
 							{/* identical style; Reject first in DOM; aria-disabled (not disabled) keeps focus in place mid-animation */}
 							<button ref={firstBtn} type="button" className="cg-btn" aria-disabled={busy} onClick={() => choose("denied")}>
@@ -166,47 +240,24 @@ export function CookieBanner() {
 								Accept
 							</button>
 						</div>
+						<span className="cg-plate" ref={cookie} aria-hidden="true" {...{ [LOOK_ATTR]: "banner" }}>
+							<CookieSvg />
+						</span>
 					</div>
 				</section>
 			)}
+
+			{flight && (
+				<div
+					ref={fly}
+					className="cg-fly"
+					aria-hidden="true"
+					{...{ [LOOK_ATTR]: "fly" }}
+					style={{ left: flight.x, top: flight.y, width: flight.size, height: flight.size }}
+				>
+					<CookieSvg />
+				</div>
+			)}
 		</>
-	);
-}
-
-// [bite, dx, up] — 3 crumbs per bite
-const CRUMBS: [number, number, number][] = [
-	[1, -14, -10], [1, 9, -7], [1, -4, -13],
-	[2, 12, -11], [2, -10, -6], [2, 3, -14],
-	[3, -16, -9], [3, 14, -12], [3, -2, -8],
-];
-
-function CookieSvg({ maskId }: { maskId: string }) {
-	return (
-		<svg viewBox="0 0 48 48" focusable="false">
-			<defs>
-				<mask id={maskId} maskUnits="userSpaceOnUse" x="0" y="0" width="48" height="48">
-					<rect width="48" height="48" fill="#fff" />
-					{/* each bite = two buck-tooth scallops on the side facing the gopher */}
-					<g className="cg-bite cg-bite-1" fill="#000"><circle cx="3" cy="17" r="5.6" /><circle cx="2.5" cy="25" r="5.6" /></g>
-					<g className="cg-bite cg-bite-2" fill="#000"><circle cx="9" cy="8" r="5.6" /><circle cx="16" cy="3" r="5.6" /></g>
-					<g className="cg-bite cg-bite-3" fill="#000"><circle cx="6" cy="33" r="5.6" /><circle cx="11" cy="40" r="5.6" /></g>
-				</mask>
-			</defs>
-			<g mask={`url(#${maskId})`}>
-				<circle cx="24" cy="24" r="21.5" fill="#d9a35e" />
-				<circle cx="24" cy="24" r="21.5" fill="none" stroke="#a8692e" strokeWidth="2" />
-				<circle cx="21" cy="21" r="15" fill="#e6b877" opacity=".55" />
-				<g fill="#4e3020">
-					<ellipse cx="17" cy="15" rx="3" ry="2.4" transform="rotate(-20 17 15)" />
-					<ellipse cx="30" cy="13" rx="2.6" ry="2.1" transform="rotate(25 30 13)" />
-					<ellipse cx="34" cy="27" rx="3" ry="2.4" transform="rotate(10 34 27)" />
-					<ellipse cx="22" cy="28" rx="2.8" ry="2.2" transform="rotate(-35 22 28)" />
-					<ellipse cx="13" cy="31" rx="2.2" ry="1.8" />
-					<ellipse cx="27" cy="37" rx="2.6" ry="2" transform="rotate(15 27 37)" />
-					<ellipse cx="10" cy="22" rx="1.8" ry="1.5" />
-				</g>
-				<g fill="#f3d3a0" opacity=".7"><circle cx="25" cy="20" r=".9" /><circle cx="35" cy="20" r=".8" /><circle cx="18" cy="36" r=".8" /></g>
-			</g>
-		</svg>
 	);
 }
