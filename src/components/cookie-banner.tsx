@@ -46,7 +46,7 @@ export function CookieBanner() {
 		if (c === "granted") loadGA(); // returning reader who already accepted
 		else clearGaCookies(); // leftovers from a withdrawal or an expired choice
 		setPhase(c ? "done" : "idle");
-		if (!c) setMood("waiting");
+		setMood(c === "granted" ? "watching" : c ? "still" : "waiting");
 		const reopen = () => {
 			prior.current = readConsent();
 			returnFocus.current = document.activeElement as HTMLElement | null; // the footer button
@@ -90,7 +90,7 @@ export function CookieBanner() {
 		const animate = choice === "granted" ? was !== "granted" : was === null;
 		const from = cookie.current?.getBoundingClientRect();
 		if (reduced || !animate || !from) {
-			setMood("still");
+			setMood(choice === "granted" ? "watching" : "still");
 			return closeBanner();
 		}
 		setFlight({ kind: choice === "granted" ? "eat" : "away", x: from.left, y: from.top, size: from.width });
@@ -154,7 +154,7 @@ export function CookieBanner() {
 				await run(el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: "forwards" }));
 				if (alive) {
 					setFlight(null);
-					setMood("still");
+					setMood("watching"); // accepted anyway
 				}
 				return;
 			}

@@ -1,7 +1,8 @@
 "use client";
 // The header gopher. Reacts to the cookie banner (see src/lib/gopher.ts):
 // waiting → the eyes follow the pointer or the cookie and it licks its lips,
-// eating → chews the cookie that rolled into its mouth, doh → watches it roll away.
+// eating → chews the cookie that rolled into its mouth, doh → watches it roll away,
+// watching → accepted: the eyes keep following the pointer.
 // Eyes: the PNG pupils are covered with white and redrawn as SVG that can move
 // (technique from https://buipalsulich.com/post/gopher-eyes/). Styles: src/styles/cookie-gopher.css.
 import { CookieSvg } from "@/components/cookie-svg";
@@ -44,7 +45,7 @@ export function GopherMark() {
 		if (mood === "eating") {
 			setBites(0);
 			const ts = BITES_AT.map((t, i) => window.setTimeout(() => setBites(i + 1), t));
-			ts.push(window.setTimeout(() => setMood("still"), EAT_MS));
+			ts.push(window.setTimeout(() => setMood("watching"), EAT_MS));
 			return () => ts.forEach(clearTimeout);
 		}
 		if (mood === "doh") {
@@ -75,6 +76,51 @@ export function GopherMark() {
 			});
 		};
 		if (mood === "still") return aim(null);
+		const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+		// Accepted: the eyes keep following the pointer, driven by events (no rAF loop on every page).
+		// The mouse is followed to its last position; a touch is looked at briefly; leaving the window → rest.
+		if (mood === "watching") {
+			if (reduced) return aim(null);
+			let last: Point | null = null;
+			let frame = 0;
+			let reset = 0;
+			const draw = () => {
+				if (!frame) frame = requestAnimationFrame(() => {
+					frame = 0;
+					aim(last);
+				});
+			};
+			const onPointer = (e: PointerEvent) => {
+				last = { x: e.clientX, y: e.clientY };
+				draw();
+				clearTimeout(reset);
+				if (e.pointerType === "touch")
+					reset = window.setTimeout(() => {
+						last = null;
+						draw();
+					}, TOUCH_MS);
+			};
+			const onLeave = (e: PointerEvent) => {
+				if (e.pointerType === "touch") return; // lifting the finger is not leaving
+				last = null;
+				draw();
+			};
+			const onScroll = () => last && draw(); // the gopher moved under a still pointer
+			const root = document.documentElement;
+			window.addEventListener("pointermove", onPointer, { passive: true });
+			window.addEventListener("pointerdown", onPointer, { passive: true });
+			root.addEventListener("pointerleave", onLeave);
+			window.addEventListener("scroll", onScroll, { passive: true });
+			return () => {
+				cancelAnimationFrame(frame);
+				clearTimeout(reset);
+				window.removeEventListener("pointermove", onPointer);
+				window.removeEventListener("pointerdown", onPointer);
+				root.removeEventListener("pointerleave", onLeave);
+				window.removeEventListener("scroll", onScroll);
+			};
+		}
 
 		let pointer: (Point & { t: number; touch: boolean }) | null = null;
 		const target = (): Point | null => {
@@ -86,7 +132,7 @@ export function GopherMark() {
 		};
 
 		// Reduced motion: one static glance at the cookie, no tracking.
-		if (matchMedia("(prefers-reduced-motion: reduce)").matches) return aim(target());
+		if (reduced) return aim(target());
 
 		const onPointer = (e: PointerEvent) => {
 			pointer = { x: e.clientX, y: e.clientY, t: performance.now(), touch: e.pointerType === "touch" };
@@ -145,7 +191,7 @@ export function GopherMark() {
 	);
 }
 
-const BUBBLE: Record<Mood, string> = { still: "", waiting: "", eating: "Yum!", doh: "D'oh!" };
+const BUBBLE: Record<Mood, string> = { still: "", waiting: "", eating: "Yum!", doh: "D'oh!", watching: "" };
 
 // [bite, dx, up] — 3 crumbs per bite (CSS px, the logo is small)
 const CRUMBS: [number, number, number][] = [

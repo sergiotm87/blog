@@ -4,7 +4,8 @@ import { useSyncExternalStore } from "react";
 
 // still: plain logo · waiting: banner open, eyes follow the pointer or the cookie
 // eating: the cookie reached the mouth · doh: the cookie rolled away (rejected)
-export type Mood = "still" | "waiting" | "eating" | "doh";
+// watching: analytics accepted (after eating, or on later visits), the eyes follow the pointer
+export type Mood = "still" | "waiting" | "eating" | "doh" | "watching";
 
 let mood: Mood = "still";
 const subs = new Set<() => void>();
