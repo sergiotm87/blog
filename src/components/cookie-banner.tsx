@@ -12,6 +12,7 @@ import {
 	readConsent,
 	writeConsent,
 } from "@/lib/consent";
+import { DOH_MS } from "@/components/gopher-mark";
 import { LOOK_ATTR, SLOT_ATTR, setMood } from "@/lib/gopher";
 // The theme renders the banner outside <ViewTransitions>, so use next/link here:
 // the view-transitions Link would hang until the browser times out.
@@ -30,7 +31,6 @@ export function CookieBanner() {
 	const [phase, setPhase] = useState<Phase>("unknown");
 	const [message, setMessage] = useState("");
 	const [flight, setFlight] = useState<Flight | null>(null);
-	const prior = useRef<Choice | null>(null); // choice in force when the banner was shown
 	const returnFocus = useRef<HTMLElement | null>(null); // where focus was before it entered the banner
 	const focusWasInside = useRef(false);
 	const focusOnShow = useRef(false);
@@ -42,13 +42,11 @@ export function CookieBanner() {
 	// Static export: decide only after mount (no hydration mismatch).
 	useEffect(() => {
 		const c = readConsent();
-		prior.current = c;
 		if (c === "granted") loadGA(); // returning reader who already accepted
 		else clearGaCookies(); // leftovers from a withdrawal or an expired choice
 		setPhase(c ? "done" : "idle");
 		setMood(c === "granted" ? "watching" : c ? "still" : "waiting");
 		const reopen = () => {
-			prior.current = readConsent();
 			returnFocus.current = document.activeElement as HTMLElement | null; // the footer button
 			focusOnShow.current = true; // user asked for it → moving focus is not "stealing" it
 			setFlight(null);
@@ -81,18 +79,21 @@ export function CookieBanner() {
 
 	function choose(choice: Choice) {
 		if (phase !== "idle") return;
-		const was = prior.current;
-		writeConsent(choice); // side effects now; GA never waits for the animation (may reload on revoke)
+		// Side effects now: GA never waits for the animation. A withdrawal after gtag.js loaded
+		// needs a reload, which waits for the "D'oh!" so the animation is not cut.
+		const reload = writeConsent(choice);
 		setMessage(choice === "granted" ? "Analytics cookies accepted." : "Analytics cookies rejected.");
 		focusWasInside.current = section.current?.contains(document.activeElement) ?? false;
 		const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-		// First answer only: re-accepting is not rewarded again, denied→denied just closes
-		const animate = choice === "granted" ? was !== "granted" : was === null;
+		// Every choice is animated, also when reopened from "Cookie settings".
 		const from = cookie.current?.getBoundingClientRect();
-		if (reduced || !animate || !from) {
+		if (reduced || !from) {
 			setMood(choice === "granted" ? "watching" : "still");
-			return closeBanner();
+			closeBanner();
+			if (reload) location.reload();
+			return;
 		}
+		if (reload) window.setTimeout(() => location.reload(), DOH_MS); // even if the animation is cut
 		setFlight({ kind: choice === "granted" ? "eat" : "away", x: from.left, y: from.top, size: from.width });
 		setPhase("leaving");
 		if (choice === "denied") setMood("doh"); // the gopher watches it roll away

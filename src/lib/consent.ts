@@ -38,15 +38,20 @@ export function readConsent(): Choice | null {
 	}
 }
 
-export function writeConsent(choice: Choice) {
+// Returns true when the page must be reloaded to stop gtag.js (a withdrawal after it loaded).
+// The caller reloads, so the banner can finish its animation first.
+export function writeConsent(choice: Choice): boolean {
 	try {
 		const value: Stored = { v: VERSION, analytics: choice, ts: Date.now() };
 		localStorage.setItem(KEY, JSON.stringify(value));
 	} catch {
 		// Storage blocked: GA still loads for this page view only if accepted.
 	}
-	if (choice === "granted") loadGA();
-	else revoke();
+	if (choice === "granted") {
+		loadGA();
+		return false;
+	}
+	return revoke();
 }
 
 export function loadGA() {
@@ -101,10 +106,10 @@ export function clearGaCookies() {
 	}
 }
 
-function revoke() {
+function revoke(): boolean {
 	// Stop gtag.js from writing cookies again before the reload.
 	window.gtag?.("consent", "update", { analytics_storage: "denied" });
 	clearGaCookies();
 	// gtag.js cannot be unloaded once running, so a reload is the only way to stop it.
-	if (window.__gaLoaded) location.reload();
+	return window.__gaLoaded === true;
 }

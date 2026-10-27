@@ -23,7 +23,7 @@ const POINTER_MS = 4000; // the mouse wins over the cookie for this long after i
 const TOUCH_MS = 1500;
 
 export const EAT_MS = 2100; // = bubble end (780 + 1300) + margin
-const DOH_MS = 1700; // = bubble end (350 + 1300) + margin
+export const DOH_MS = 1700; // = bubble end (350 + 1300) + margin
 const BITES_AT = [240, 420, 600]; // = --t-chomp + --chomp × n (jaw closes)
 
 type Point = { x: number; y: number };
