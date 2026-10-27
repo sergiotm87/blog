@@ -54,13 +54,20 @@ export function writeConsent(choice: Choice): boolean {
 	return revoke();
 }
 
+// Google's opt-out switch: gtag.js checks it before sending every hit.
+const DISABLE_KEY = `ga-disable-${GA_ID}`;
+function setGaDisabled(off: boolean) {
+	(window as unknown as Record<string, unknown>)[DISABLE_KEY] = off;
+}
+
 export function loadGA() {
-	if (
-		process.env.NODE_ENV !== "production" ||
-		location.hostname !== GA_HOST ||
-		window.__gaLoaded
-	)
+	if (process.env.NODE_ENV !== "production" || location.hostname !== GA_HOST) return;
+	if (window.__gaLoaded) {
+		// Accepted again before the reload of a withdrawal: switch the running tag back on.
+		setGaDisabled(false);
+		window.gtag?.("consent", "update", { analytics_storage: "granted" });
 		return;
+	}
 	window.__gaLoaded = true;
 	window.dataLayer = window.dataLayer || [];
 	// gtag needs `arguments`, so this must be a plain function.
@@ -107,7 +114,8 @@ export function clearGaCookies() {
 }
 
 function revoke(): boolean {
-	// Stop gtag.js from writing cookies again before the reload.
+	// Stop gtag.js from sending anything (not even cookieless pings) or writing cookies before the reload.
+	if (window.__gaLoaded) setGaDisabled(true);
 	window.gtag?.("consent", "update", { analytics_storage: "denied" });
 	clearGaCookies();
 	// gtag.js cannot be unloaded once running, so a reload is the only way to stop it.

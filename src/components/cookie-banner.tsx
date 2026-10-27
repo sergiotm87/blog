@@ -33,6 +33,7 @@ export function CookieBanner() {
 	const [flight, setFlight] = useState<Flight | null>(null);
 	const returnFocus = useRef<HTMLElement | null>(null); // where focus was before it entered the banner
 	const focusWasInside = useRef(false);
+	const reloadTimer = useRef(0); // pending reload after a withdrawal (see choose)
 	const focusOnShow = useRef(false);
 	const firstBtn = useRef<HTMLButtonElement>(null);
 	const section = useRef<HTMLElement>(null);
@@ -47,6 +48,8 @@ export function CookieBanner() {
 		setPhase(c ? "done" : "idle");
 		setMood(c === "granted" ? "watching" : c ? "still" : "waiting");
 		const reopen = () => {
+			// GA is already switched off; the next choice decides whether the page still reloads.
+			clearTimeout(reloadTimer.current);
 			returnFocus.current = document.activeElement as HTMLElement | null; // the footer button
 			focusOnShow.current = true; // user asked for it → moving focus is not "stealing" it
 			setFlight(null);
@@ -81,6 +84,7 @@ export function CookieBanner() {
 		if (phase !== "idle") return;
 		// Side effects now: GA never waits for the animation. A withdrawal after gtag.js loaded
 		// needs a reload, which waits for the "D'oh!" so the animation is not cut.
+		clearTimeout(reloadTimer.current);
 		const reload = writeConsent(choice);
 		setMessage(choice === "granted" ? "Analytics cookies accepted." : "Analytics cookies rejected.");
 		focusWasInside.current = section.current?.contains(document.activeElement) ?? false;
@@ -93,7 +97,7 @@ export function CookieBanner() {
 			if (reload) location.reload();
 			return;
 		}
-		if (reload) window.setTimeout(() => location.reload(), DOH_MS); // even if the animation is cut
+		if (reload) reloadTimer.current = window.setTimeout(() => location.reload(), DOH_MS); // even if the animation is cut
 		setFlight({ kind: choice === "granted" ? "eat" : "away", x: from.left, y: from.top, size: from.width });
 		setPhase("leaving");
 		if (choice === "denied") setMood("doh"); // the gopher watches it roll away
