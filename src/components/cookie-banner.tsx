@@ -116,8 +116,8 @@ export function CookieBanner() {
 			const collapse = run(
 				sec.animate(
 					[
-						{ opacity: 1, height: `${sec.offsetHeight}px`, marginTop: getComputedStyle(sec).marginTop },
-						{ opacity: 0, height: "0px", marginTop: "0px" },
+						{ opacity: 1, height: `${sec.offsetHeight}px`, paddingTop: getComputedStyle(sec).paddingTop },
+						{ opacity: 0, height: "0px", paddingTop: "0px" },
 					],
 					{ duration: COLLAPSE_MS, easing: "cubic-bezier(.4,0,.2,1)", fill: "forwards" },
 				),

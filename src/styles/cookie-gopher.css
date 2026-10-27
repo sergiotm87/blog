@@ -13,7 +13,8 @@
 .cg-banner {
   --cg-surface:#fffdf7; --cg-border:rgb(29 26 22 / .10); --cg-text:#1d1a16; --cg-muted:#5f574c; --cg-btn:#1d1a16;
   position:relative; z-index:20;
-  max-width:700px; margin:16px auto 0; padding:0 16px;
+  /* padding, not margin: a top margin collapses through <body> and shows the html background above it */
+  max-width:700px; margin:0 auto; padding:16px 16px 0;
 }
 .dark .cg-banner {
   --cg-surface:#1f1a14; --cg-border:rgb(255 255 255 / .10); --cg-text:#f2ede4; --cg-muted:#b3aa9c; --cg-btn:#f2ede4;
